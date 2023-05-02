@@ -35,7 +35,7 @@ from pydantic import (
 )
 
 
-BINARY_DEFENSE_NAMESPACE = UUID('0de89117-d7f0-4bea-89ee-2f336c24a796')
+BINARY_DEFENSE_NAMESPACE = UUID('e90e2247-7f4b-46f9-ae32-cd0a14b673ed')
 DEFAULT_LOG_LEVEL = logging.WARNING
 LOG_LEVEL = getenv("LOG_LEVEL", 'WARNING')
 CACHE_DIR = getenv("CACHE_DIR", "/tmp")
