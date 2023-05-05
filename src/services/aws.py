@@ -5,6 +5,7 @@ from hashlib import sha256
 from typing import Any, Union
 
 import boto3
+import lumigo_tracer
 from retry.api import retry
 from botocore.exceptions import (
     CapacityNotAvailableError,
@@ -25,7 +26,13 @@ dynamodb = boto3.resource('dynamodb')
 
 class Tables(str, Enum):
     EWS_BINARY_DEFENSE = f'{internals.APP_ENV.lower()}_ews_binarydefense'
+    EWS_BRUTE_FORCE_BLOCKER = f'{internals.APP_ENV.lower()}_ews_bruteforceblocker'
+    EWS_CH = f'{internals.APP_ENV.lower()}_ews_ch'
+    EWS_CRUZIT = f'{internals.APP_ENV.lower()}_ews_cruzit'
     EWS_DATAPLANE = f'{internals.APP_ENV.lower()}_ews_dataplane'
+    EWS_DARKLIST = f'{internals.APP_ENV.lower()}_ews_darklist'
+    EWS_PROOFPOINT = f'{internals.APP_ENV.lower()}_ews_proofpoint'
+    EWS_TALOS = f'{internals.APP_ENV.lower()}_ews_talos'
     LOGIN_SESSIONS = f'{internals.APP_ENV.lower()}_login_sessions'
     REPORT_HISTORY = f'{internals.APP_ENV.lower()}_report_history'
     OBSERVED_IDENTIFIERS = f'{internals.APP_ENV.lower()}_observed_identifiers'
@@ -92,7 +99,7 @@ def get_ssm(parameter: str, default: Any = None, **kwargs) -> Any:
         elif err.response["Error"]["Code"] == "InvalidParameterException":  # type: ignore
             internals.logger.warning(f"The request had invalid params: {err}")
         else:
-            internals.logger.exception(err)
+            lumigo_tracer.report_error(err)
     return default
 
 
@@ -130,7 +137,7 @@ def store_ssm(parameter: str, value: str, **kwargs) -> bool:
                 "Platform is exhausted and unable to respond, please try again soon"
             ) from err
         else:
-            internals.logger.exception(err)
+            lumigo_tracer.report_error(err)
     return False
 
 
@@ -168,15 +175,15 @@ def list_s3(prefix_key: str, bucket_name: str = STORE_BUCKET) -> list[str]:
 
         except ClientError as err:
             if err.response["Error"]["Code"] == "NoSuchBucket":  # type: ignore
-                internals.logger.error(
+                lumigo_tracer.error(
                     f"The requested bucket {bucket_name} was not found"
                 )
             elif err.response["Error"]["Code"] == "InvalidObjectState":  # type: ignore
-                internals.logger.error(f"The request was invalid due to: {err}")
+                lumigo_tracer.error(f"The request was invalid due to: {err}")
             elif err.response["Error"]["Code"] == "InvalidParameterException":  # type: ignore
-                internals.logger.error(f"The request had invalid params: {err}")
+                lumigo_tracer.error(f"The request had invalid params: {err}")
             else:
-                internals.logger.exception(err)
+                lumigo_tracer.report_error(err)
             return []
         for item in results.get("Contents", []):
             k = item["Key"]  # type: ignore
@@ -221,15 +228,15 @@ def list_s3_objects(prefix_key: str, bucket_name: str = STORE_BUCKET) -> list[st
 
         except ClientError as err:
             if err.response["Error"]["Code"] == "NoSuchBucket":  # type: ignore
-                internals.logger.error(
+                lumigo_tracer.error(
                     f"The requested bucket {bucket_name} was not found"
                 )
             elif err.response["Error"]["Code"] == "InvalidObjectState":  # type: ignore
-                internals.logger.error(f"The request was invalid due to: {err}")
+                lumigo_tracer.error(f"The request was invalid due to: {err}")
             elif err.response["Error"]["Code"] == "InvalidParameterException":  # type: ignore
-                internals.logger.error(f"The request had invalid params: {err}")
+                lumigo_tracer.error(f"The request had invalid params: {err}")
             else:
-                internals.logger.exception(err)
+                lumigo_tracer.report_error(err)
             return []
         for item in results.get("Contents", []):
             k = item["Key"]  # type: ignore
@@ -267,7 +274,7 @@ def get_s3(path_key: str, bucket_name: str = STORE_BUCKET, default: Any = None) 
         elif err.response["Error"]["Code"] == "InvalidParameterException":  # type: ignore
             internals.logger.warning(f"The request had invalid params: {err}")
         else:
-            internals.logger.exception(err)
+            lumigo_tracer.report_error(err)
     return default
 
 
@@ -298,7 +305,7 @@ def delete_s3(path_key: str, bucket_name: str = STORE_BUCKET, **kwargs) -> bool:
         elif err.response["Error"]["Code"] == "InvalidParameterException":  # type: ignore
             internals.logger.warning(f"The request had invalid params: {err}")
         else:
-            internals.logger.exception(err)
+            lumigo_tracer.report_error(err)
     return False
 
 
@@ -349,7 +356,7 @@ def store_s3(
                 "Platform is exhausted and unable to respond, please try again soon"
             ) from err
         else:
-            internals.logger.exception(err)
+            lumigo_tracer.report_error(err)
     return False
 
 
@@ -407,7 +414,7 @@ def store_sqs(
     try:
         queue = sqs_client.get_queue_url(QueueName=queue_name)
         if not queue.get("QueueUrl"):
-            internals.logger.error(f"no queue with name {queue_name}")
+            lumigo_tracer.error(f"no queue with name {queue_name}")
             return False
 
         params: dict[str, Any] = {
@@ -429,11 +436,11 @@ def store_sqs(
         )
     except ClientError as err:
         if err.response["Error"]["Code"] == "InvalidMessageContents":  # type: ignore
-            internals.logger.error(f"InvalidMessageContents: {message_body}")
+            lumigo_tracer.error(f"InvalidMessageContents: {message_body}")
         elif err.response["Error"]["Code"] == "UnsupportedOperation":  # type: ignore
-            internals.logger.error(f"UnsupportedOperation: {err}")
+            lumigo_tracer.error(f"UnsupportedOperation: {err}")
         else:
-            internals.logger.exception(err)
+            lumigo_tracer.report_error(err)
     return False
 
 @retry(
@@ -457,7 +464,7 @@ def get_dynamodb(item_key: dict, table_name: Tables, default: Any = None, **kwar
         return response.get("Item", default)
 
     except Exception as err:
-        internals.logger.exception(err)
+        lumigo_tracer.report_error(err)
     return default
 
 @retry(
@@ -478,7 +485,7 @@ def put_dynamodb(item: dict, table_name: Tables, **kwargs) -> bool:
         raw = json.dumps(item, cls=internals.JSONEncoder)
         data = json.loads(raw, parse_float=str, parse_int=str)
     except json.JSONDecodeError as err:
-        internals.logger.error(err, exc_info=True)
+        lumigo_tracer.report_error(err.msg)
         return False
     try:
         table = dynamodb.Table(table_name.value)
@@ -486,7 +493,7 @@ def put_dynamodb(item: dict, table_name: Tables, **kwargs) -> bool:
         return response.get("ResponseMetadata", {}).get("RequestId") is not None
 
     except Exception as err:
-        internals.logger.exception(err)
+        lumigo_tracer.report_error(err)
         internals.logger.info(f"data: {data}")
     return False
 
@@ -511,7 +518,7 @@ def delete_dynamodb(item_key: dict, table_name: Tables, **kwargs) -> bool:
         return response.get("ResponseMetadata", {}).get("RequestId") is not None
 
     except Exception as err:
-        internals.logger.exception(err)
+        lumigo_tracer.report_error(err)
     return False
 
 @retry(
@@ -535,5 +542,5 @@ def query_dynamodb(table_name: Tables, **kwargs) -> list[dict]:
         return response.get("Items", [])
 
     except Exception as err:
-        internals.logger.exception(err)
+        lumigo_tracer.report_error(err)
     return []
