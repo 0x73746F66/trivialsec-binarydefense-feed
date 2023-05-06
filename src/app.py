@@ -40,13 +40,7 @@ def compare_contents(old_contents: str, new_contents: str):
             yield ip_address
 
 
-@lumigo_tracer(
-    token=services.aws.get_ssm(f'/{internals.APP_ENV}/{internals.APP_NAME}/Lumigo/token', WithDecryption=True),
-    should_report=internals.APP_ENV == "Prod",
-    skip_collecting_http_body=True,
-    verbose=internals.APP_ENV != "Prod"
-)
-def handler(event, context):
+def run(event):
     if event.get("source"):
         internals.trace_tag({
             "source": event["source"],
@@ -104,3 +98,16 @@ def handler(event, context):
             value=contents
         )
     internals.logger.info(f"{results} processed records")
+
+
+@lumigo_tracer(
+    token=services.aws.get_ssm(f'/{internals.APP_ENV}/{internals.APP_NAME}/Lumigo/token', WithDecryption=True),
+    should_report=internals.APP_ENV == "Prod",
+    skip_collecting_http_body=True,
+    verbose=internals.APP_ENV != "Prod"
+)
+def handler(event, context):
+    try:
+        run(event)
+    except Exception as err:
+        raise internals.UnspecifiedError from err

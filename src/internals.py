@@ -4,6 +4,7 @@ import logging
 import threading
 import json
 import errno
+from time import sleep
 from pathlib import Path
 from uuid import UUID
 from os import path, getenv
@@ -44,6 +45,23 @@ if getenv("AWS_EXECUTION_ENV") is not None:
     boto3.set_stream_logger('boto3', getattr(logging, LOG_LEVEL, DEFAULT_LOG_LEVEL))
 logger.setLevel(getattr(logging, LOG_LEVEL, DEFAULT_LOG_LEVEL))
 logging.getLogger('urllib3').setLevel(logging.ERROR)
+
+
+class DelayRetryHandler(Exception):
+    """
+    Delay the retry handler and provide a useful message when retries are exceeded
+    """
+    def __init__(self, **kwargs):
+        sleep(kwargs.get("delay", 3) or 3)
+        Exception.__init__(self, kwargs.get("msg", "Max retries exceeded"))
+
+
+class UnspecifiedError(Exception):
+    """
+    The exception class for exceptions that weren't previously known.
+    """
+    def __init__(self, **kwargs):
+        Exception.__init__(self, kwargs.get("msg", "An unspecified error occurred"))
 
 
 class JSONEncoder(json.JSONEncoder):
